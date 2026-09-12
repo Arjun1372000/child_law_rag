@@ -1,0 +1,242 @@
+[
+  {
+    "method": "dense",
+    "question": "What is the punishment under the POCSO Act?",
+    "latency": 0.05,
+    "sources": [
+      "jjact2015.pdf#19",
+      "jjact2015.pdf#216",
+      "jjact2015.pdf#18"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "Under Section 13(1)(d) of the Prohibiting Offences Against Children (POCSO) Act,2005, a child who ha"
+  },
+  {
+    "method": "dense",
+    "question": "What rights do children have under the Constitution?",
+    "latency": 0.03,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#41",
+      "ChildRightsandProtection-English (Final).pdf.pdf#325",
+      "ChildRightsandProtection-English (Final).pdf.pdf#108"
+    ],
+    "relevance": 0.7,
+    "answer_preview": "Under the Indian Constitution, children have various protections and rights guaranteed to them. One "
+  },
+  {
+    "method": "dense",
+    "question": "What are the child labour laws in Tamil Nadu?",
+    "latency": 0.04,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#226",
+      "ChildRightsandProtection-English (Final).pdf.pdf#259",
+      "ChildRightsandProtection-English (Final).pdf.pdf#106"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "In Tamil Nadu, the child labor laws are governed by two primary acts: The Child Labour (Prohibition "
+  },
+  {
+    "method": "dense",
+    "question": "How can child abuse be reported in Kerala?",
+    "latency": 0.04,
+    "sources": [
+      "POCSOact_pt1.pdf#188",
+      "POCSOact_pt1.pdf#63",
+      "POCSOact_pt1.pdf#190"
+    ],
+    "relevance": 0.9,
+    "answer_preview": "According to the POCSO Act, child abuse can be reported by an adult, including a doctor or other hea"
+  },
+  {
+    "method": "dense",
+    "question": "What is the Juvenile Justice Act?",
+    "latency": 0.05,
+    "sources": [
+      "constitution_english.pdf#440",
+      "constitution_english.pdf#657",
+      "constitution_english.pdf#67"
+    ],
+    "relevance": 0.6,
+    "answer_preview": "Unfortunately, I'm not able to find any information about a specific \"Juvenile Justice Act\" in the p"
+  },
+  {
+    "method": "hybrid",
+    "question": "What is the punishment under the POCSO Act?",
+    "latency": 0.31,
+    "sources": [
+      "POCSOact_pt1.pdf#267",
+      "POCSOact_pt1.pdf#67",
+      "jjact2015.pdf#19"
+    ],
+    "relevance": 0.3,
+    "answer_preview": "The Punjab Protection of Children from Sexual Offences Act, 2015 (POCSO Act), specifically states th"
+  },
+  {
+    "method": "hybrid",
+    "question": "What rights do children have under the Constitution?",
+    "latency": 0.25,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#41",
+      "ChildRightsandProtection-English (Final).pdf.pdf#108",
+      "ChildRightsandProtection-English (Final).pdf.pdf#85"
+    ],
+    "relevance": 0.6,
+    "answer_preview": "According to the available information, under the Indian Constitution, children have several rights "
+  },
+  {
+    "method": "hybrid",
+    "question": "What are the child labour laws in Tamil Nadu?",
+    "latency": 0.27,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#259",
+      "ChildRightsandProtection-English (Final).pdf.pdf#226",
+      "ChildRightsandProtection-English (Final).pdf.pdf#122"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "The child labour laws in Tamil Nadu are addressed in the Child Labour (Prohibition and Regulation) A"
+  },
+  {
+    "method": "hybrid",
+    "question": "How can child abuse be reported in Kerala?",
+    "latency": 0.25,
+    "sources": [
+      "POCSOact_pt1.pdf#192",
+      "POCSOact_pt1.pdf#190",
+      "k_juvenile_justice_rules.pdf#321"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "According to the National Commission For Protection of Child Rights guideline in India, a child abus"
+  },
+  {
+    "method": "hybrid",
+    "question": "What is the Juvenile Justice Act?",
+    "latency": 0.24,
+    "sources": [
+      "k_juvenile_justice_rules.pdf#569",
+      "juvenile_justice_rules_2017.pdf#331",
+      "FosterCare.pdf#50"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "The Juvenile Justice (care and Protection of children) Act, 2015 is a comprehensive legislation that"
+  },
+  {
+    "method": "multiquery",
+    "question": "What is the punishment under the POCSO Act?",
+    "latency": 1.17,
+    "sources": [
+      "k_juvenile_justice_rules.pdf#569",
+      "jjact2015.pdf#219",
+      "juvenile_justice_rules_2017.pdf#231"
+    ],
+    "relevance": 0.6,
+    "answer_preview": "Under the Protection of Children from Sexual Offences (POCSO) Act, 2012 [CITE1], punishments for dif"
+  },
+  {
+    "method": "multiquery",
+    "question": "What rights do children have under the Constitution?",
+    "latency": 2.33,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#127",
+      "ChildRightsandProtection-English (Final).pdf.pdf#325",
+      "ChildRightsandProtection-English (Final).pdf.pdf#108"
+    ],
+    "relevance": 0.6,
+    "answer_preview": "Under the Constitution of India, children have various rights that are guaranteed to ensure their pr"
+  },
+  {
+    "method": "multiquery",
+    "question": "What are the child labour laws in Tamil Nadu?",
+    "latency": 1.68,
+    "sources": [
+      "k_juvenile_justice_rules.pdf#296",
+      "ChildRightsandProtection-English (Final).pdf.pdf#259",
+      "ChildRightsandProtection-English (Final).pdf.pdf#122"
+    ],
+    "relevance": 0.7,
+    "answer_preview": "In Tamil Nadu, the Child Labour (Prohibition and Regulation) Act, 1986 is the primary legislation go"
+  },
+  {
+    "method": "multiquery",
+    "question": "How can child abuse be reported in Kerala?",
+    "latency": 1.12,
+    "sources": [
+      "POCSOact_pt1.pdf#188",
+      "ChildRightsandProtection-English (Final).pdf.pdf#403",
+      "k_juvenile_justice_rules.pdf#147"
+    ],
+    "relevance": 0.9,
+    "answer_preview": "In Kerala, child abuse can be reported to various agencies and helplines. According to Section 18 of"
+  },
+  {
+    "method": "multiquery",
+    "question": "What is the Juvenile Justice Act?",
+    "latency": 2.08,
+    "sources": [
+      "constitution_english.pdf#657",
+      "constitution_english.pdf#791",
+      "constitution_english.pdf#440"
+    ],
+    "relevance": 0.6,
+    "answer_preview": "The Juvenile Justice (Care and Protection of Children) Act, 2005. \n\nHowever insufficient legal infor"
+  },
+  {
+    "method": "corrective",
+    "question": "What is the punishment under the POCSO Act?",
+    "latency": 0.03,
+    "sources": [
+      "jjact2015.pdf#19",
+      "jjact2015.pdf#216",
+      "jjact2015.pdf#18"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "Under the Protection of Children from Sexual Offences (POCSO) Act, 2012, the punishments for childre"
+  },
+  {
+    "method": "corrective",
+    "question": "What rights do children have under the Constitution?",
+    "latency": 0.04,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#41",
+      "ChildRightsandProtection-English (Final).pdf.pdf#325",
+      "ChildRightsandProtection-English (Final).pdf.pdf#108"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "Under the Constitution of India, children have a range of rights that are essential for their surviv"
+  },
+  {
+    "method": "corrective",
+    "question": "What are the child labour laws in Tamil Nadu?",
+    "latency": 0.04,
+    "sources": [
+      "ChildRightsandProtection-English (Final).pdf.pdf#226",
+      "ChildRightsandProtection-English (Final).pdf.pdf#259",
+      "ChildRightsandProtection-English (Final).pdf.pdf#106"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "In Tamil Nadu, the child labor laws are governed by various provisions of the Central acts and state"
+  },
+  {
+    "method": "corrective",
+    "question": "How can child abuse be reported in Kerala?",
+    "latency": 0.04,
+    "sources": [
+      "POCSOact_pt1.pdf#188",
+      "POCSOact_pt1.pdf#63",
+      "POCSOact_pt1.pdf#190"
+    ],
+    "relevance": 0.7,
+    "answer_preview": "According to the provisions of the Protection of Children from Sexual Offences (POCSO) Act, child ab"
+  },
+  {
+    "method": "corrective",
+    "question": "What is the Juvenile Justice Act?",
+    "latency": 0.04,
+    "sources": [
+      "constitution_english.pdf#440",
+      "constitution_english.pdf#657",
+      "constitution_english.pdf#67"
+    ],
+    "relevance": 0.8,
+    "answer_preview": "I apologize, but I couldn't find information on \"Juvenile Justice Act\" from the provided context.\n\nI"
+  }
+]
