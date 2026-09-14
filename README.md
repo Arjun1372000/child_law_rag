@@ -1,128 +1,106 @@
-# Child Law Legal Assistant
+# Design and Development of an AI-Powered Legal Assistant for Child Protection and Rights Awareness
 
-A specialized legal assistant powered by LLMs (Large Language Models) designed to provide answers on child protection laws, child rights, and related legal matters in India. The system supports multiple retrieval strategies to ensure accurate and contextually relevant responses.
+A specialized, domain-grounded legal assistant and empirical research framework designed to provide accurate, citation-verified legal information on Central Indian Child Protection Laws (POCSO Act 2012, Juvenile Justice Act 2015, and the Constitution of India).
 
-## Overview
+---
 
-This project implements a **Retrieval-Augmented Generation (RAG)** system that combines document retrieval with LLM-based answer generation. It specializes in child law matters and supports state-specific legal documents (Tamil Nadu, Kerala, etc.).
+## 🌟 Key Research & Engineering Features
 
-## ✨ Key Features
+- **Cloud API Architecture**: Powered by Google Gemini (`gemini-3.6-flash` and `gemini-embedding-001`) via official `google-genai` SDK, eliminating local GPU/hardware constraints.
+- **Dual-Stage Domain Guardrail**:
+  - *Stage 1 (Lexical Fast-Filter)*: Instant matching of high-signal statutory child protection terms.
+  - *Stage 2 (Semantic Zero-Shot Triage)*: Accurately classifies and politely redirects out-of-domain queries (e.g., corporate tax, adult criminal disputes, general non-legal chatter).
+- **Structure-Aware Statutory Chunking**: Preserves Section, Article, and Rule legislative boundaries (Act $\rightarrow$ Chapter $\rightarrow$ Section $\rightarrow$ Clause) rather than naive character slicing.
+- **5 Comparative Retrieval Strategies**:
+  1. **BM25 Okapi**: Exact statutory term and section number matching.
+  2. **Dense Vector Embeddings**: 3072-dimensional semantic representation with cosine similarity.
+  3. **Hybrid Reciprocal Rank Fusion (RRF)**: $RRF(d) = \sum \frac{1}{60 + rank_i(d)}$ eliminating arbitrary score weight tuning.
+  4. **Two-Stage Re-ranking**: Hybrid candidate pooling followed by pointwise LLM cross-scoring for peak precision.
+  5. **Corrective RAG (HyDE)**: Hypothetical Document Embeddings bridging layperson language with formal statutory drafting style.
+- **ChildLaw-QA Benchmark & Scientific Evaluation Engine**:
+  - 30 annotated test cases across 6 legal categories.
+  - Automated calculation of **Hit@1, Hit@3, Hit@5, MRR@5, Faithfulness (Hallucination score), Citation Accuracy**, and latency.
+  - Export of publication-ready **LaTeX tables** (`outputs/benchmark_comparison_table.tex`) and visual comparison plots.
+- **Complete Academic Research Paper**: Pre-drafted academic manuscript ready for review in [`RESEARCH_PAPER.md`](RESEARCH_PAPER.md).
 
-- **Multi-Strategy Retrieval**: Four different retrieval methods to optimize answer quality
-  - **Dense Retrieval**: Semantic similarity using embeddings
-  - **Hybrid Retrieval**: Combines embedding-based and BM25 keyword matching (70/30 split)
-  - **Multi-Query Retrieval**: Generates query variants for comprehensive coverage
-  - **Corrective Retrieval**: Fallback with quality validation mechanisms
-
-- **State-Specific Support**: Load and query documents specific to different states (Tamil Nadu, Kerala)
-- **Smart Conversation Management**: Maintains conversation history for contextual responses
-- **Embedding Caching**: Efficient caching of embeddings to reduce computation time
-- **Domain Validation**: Automatically validates if questions are related to child law
-- **Comprehensive Evaluation**: Built-in evaluation framework with relevance scoring and performance metrics
+---
 
 ## 🛠️ Technology Stack
 
-- **LLM Framework**: OpenAI API (via Ollama local deployment)
-- **Models**:
-  - Embedding: `nomic-embed-text`
-  - Language: `llama3.2`
-- **Key Libraries**:
-  - Document Processing: PyPDF2, text processing
-  - Retrieval: Dense embedding similarity, BM25 keyword matching
-  - Evaluation: LLM-based relevance scoring with visualization
+- **LLM & Embeddings**: Google Gemini API (`gemini-3.6-flash`, `gemini-embedding-001`)
+- **Document Processing**: `pypdf`, regex-based statutory boundary chunker
+- **Information Retrieval**: `rank-bm25`, NumPy, Gemini vector embeddings
+- **Evaluation & Visuals**: Matplotlib, Seaborn, JSON, LaTeX table generator
+- **Resilience**: `tenacity` exponential backoff, persistent disk checkpointing, and cache
+
+---
 
 ## 📁 Project Structure
 
 ```
 child_law_rag/
-├── app.py                      # Main interactive application
-├── config.py                   # Configuration & constants
-├── document_processing.py      # Document loading & chunking
-├── embeddings.py               # Embedding creation & caching
-├── retrieval.py                # Retrieval strategies
-├── answer_generation.py        # Answer generation & filtering
-├── evaluation.py               # Metrics & visualization
+├── app.py                      # Upgraded interactive console assistant
+├── config.py                   # Central configurations & rate-limit pacing
+├── document_processing.py      # Structure-aware statutory chunker
+├── embeddings.py               # Gemini batch embedding with checkpointing
+├── retrieval.py                # 5 comparative retrieval strategies (BM25, Dense, RRF, Rerank, HyDE)
+├── answer_generation.py        # Dual-stage domain guardrail & citation-grounded generator
+├── evaluation.py               # Scientific IR & generation benchmarking engine
 ├── requirements.txt            # Project dependencies
-├── law_data/                   # Document storage
-│   ├── *.pdf                   # Legal Bare Acts & Rules (POCSO, JJ Act, Constitution)
-│   ├── tamil_nadu/             # Tamil Nadu specific laws
-│   └── kerala/                 # Kerala specific laws
-├── outputs/                    # Generated outputs, evaluation graphs & cache
-├── notebooks/                  # Prototyping and benchmark notebooks
-│   ├── law.ipynb
-│   └── lawV2.ipynb
-├── presentations/              # Academic review presentations & generator scripts
-│   ├── Child_Law_Architecture.pptx
-│   ├── Final_Review2_ChildLawAssistant.pptx
-│   ├── create_architecture_ppt.py
-│   └── ppt.py
-└── webapp/                     # Web application interface
+├── RESEARCH_PAPER.md           # Full academic research paper manuscript
+├── law_data/                   # Central Indian Child Protection Bare Acts & Rules
+│   ├── POCSOact_pt1.pdf        # Protection of Children from Sexual Offences Act, 2012
+│   ├── POCSOrules.pdf          # POCSO Rules, 2020
+│   ├── jjact2015.pdf           # Juvenile Justice Act, 2015
+│   ├── juvenile_justice_rules_2017.pdf # Juvenile Justice Model Rules, 2017
+│   └── constitution_english.pdf # Indian Constitution (Child Rights provisions)
+└── outputs/                    # Benchmarks, checkpoints, cache & research artifacts
+    ├── benchmark_dataset.json  # ChildLaw-QA benchmark
+    ├── benchmark_comparison_table.md   # Benchmark Markdown table
+    ├── benchmark_comparison_table.tex  # Benchmark LaTeX table
+    └── evaluation_comparison_charts.png # High-res comparison plots
 ```
+
+---
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.8+
-- Ollama running locally on `http://localhost:11434`
-- Required packages (see requirements.txt)
-
-### Installation
+### 1. Installation
 ```bash
 pip install -r requirements.txt
 ```
 
-### Running the Application
+### 2. Configure Your API Key
+Create a `.env` file in the project root:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_LLM_MODEL=gemini-3.6-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+```
+
+### 3. Run the Interactive Assistant
 ```bash
 python app.py
 ```
+From the interactive menu, you can:
+- Query using any of the 5 comparative retrieval methods.
+- View section-level statutory source citations.
+- Select Option 6 to run the full scientific benchmark.
 
-The interactive menu allows you to:
-1. Ask legal questions about child law
-2. Try different retrieval methods
-3. View citation sources
-4. Run comprehensive evaluation
+---
 
-## 📊 Retrieval Methods
+## 📊 Evaluation & Research Benchmark
 
-| Method | Description | Best For |
-|--------|-------------|----------|
-| **Dense** | Semantic similarity from embeddings | General queries |
-| **Hybrid** | Combines embeddings + keyword matching | Balanced accuracy |
-| **Multi-Query** | Multiple query variants aggregated | Complex questions |
-| **Corrective** | Quality-validated fallback retrieval | Edge cases |
-
-## ⚙️ Configuration
-
-Edit `config.py` to customize:
-- Retrieval parameters (`DEFAULT_TOP_K`, `DEFAULT_CHUNK_SIZE`)
-- Model names (embedding & LLM models)
-- Retrieval weights (dense vs BM25)
-- State-specific keywords
-
-## 📈 Evaluation
-
-The project includes comprehensive evaluation tools:
-- **Relevance Scoring**: LLM-based assessment of answer quality (0.0-1.0)
-- **Performance Metrics**: Latency, coverage, and accuracy tracking
-- **Visualization**: Performance graphs and metrics tables
-- **Reports**: JSON export of evaluation results
-
-Run evaluation from the interactive menu or programmatically:
-```python
-from evaluation import run_evaluation
-results = run_evaluation(chunks)
+Run the evaluation engine programmatically:
+```bash
+python -c "from embeddings import load_embeddings_cache; from evaluation import run_comprehensive_benchmark; chunks = load_embeddings_cache(); run_comprehensive_benchmark(chunks)"
 ```
+This automatically updates:
+- `outputs/benchmark_comparison_table.md`
+- `outputs/benchmark_comparison_table.tex`
+- `outputs/evaluation_comparison_charts.png`
 
-## 🔍 Domain Focus
+---
 
-Specializes in:
-- Child Protection Laws (POCSO Act)
-- Child Rights and Welfare
-- Adoption and Guardianship Laws
-- Child Labor Regulations
-- Right to Education
-- State-specific child law regulations
-
-## 📝 License
-
-See LICENSE file for details.
+## 📝 Academic Paper
+Read the complete research paper detailing methodology, mathematics, empirical evaluation, and ethical considerations in [`RESEARCH_PAPER.md`](RESEARCH_PAPER.md).

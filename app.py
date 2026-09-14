@@ -1,22 +1,10 @@
 """
 Child Law Legal Assistant - Main Application
 ______________________________________________________________
-
-A specialized legal assistant focused on child protection and child rights laws.
-Supports multiple retrieval strategies including dense, hybrid, multi-query, and corrective retrieval.
-
-Module Organization:
-  - config.py: Configuration, constants, and global state
-  - document_processing.py: Loading and chunking documents
-  - embeddings.py: Embedding creation and caching
-  - retrieval.py: Retrieval methods (dense, hybrid, multi-query, corrective)
-  - answer_generation.py: Answer generation and filtering
-  - evaluation.py: Evaluation and visualization functions
+Design and Development of an AI-Powered Legal Assistant for Child Protection and Rights Awareness.
+Focus: Central Indian Child Protection Legislation (POCSO Act 2012, Juvenile Justice Act 2015, Constitution).
 """
 
-from pathlib import Path
-
-# imports from local modules
 from config import LAST_RETRIEVAL_SCORES
 from document_processing import load_documents, chunk_documents
 from embeddings import (
@@ -26,76 +14,83 @@ from embeddings import (
     embeddings_cache_exists
 )
 from retrieval import (
+    retrieve_bm25,
     retrieve_dense,
-    retrieve_hybrid,
-    retrieve_multiquery,
-    retrieve_corrective
+    retrieve_hybrid_rrf,
+    retrieve_reranked,
+    retrieve_crag_hyde
 )
 from answer_generation import (
-    generate_answer,
-    is_child_law_question,
-    filter_chunks_for_state
+    validate_child_law_domain,
+    generate_answer
 )
-from evaluation import run_evaluation
+from evaluation import run_comprehensive_benchmark
 
 
+def main():
+    print("=" * 70)
+    print("  AI-Powered Legal Assistant for Child Protection & Rights Awareness")
+    print("  Focus: Central Indian Legislation (POCSO 2012, JJ Act 2015, Constitution)")
+    print("=" * 70)
 
-
-def main():    
-    # Load embeddings from cache or create new ones
+    # Load embeddings from cache or generate
     if embeddings_cache_exists():
-        print("Loading chunks from cache...")
+        print("Loading statutory chunks from disk cache...")
         chunks = load_embeddings_cache()
     else:
-        print("Loading documents...")
+        print("First-time setup: Ingesting central legal statutes...")
         documents = load_documents()
-
-        print("Chunking documents...")
         chunks = chunk_documents(documents)
-
-        print("Creating embeddings...")
+        print("Generating embeddings via Google Gemini...")
         chunks = embed_chunks(chunks)
-        
-        print("Saving embeddings cache...")
         save_embeddings_cache(chunks)
 
-    print("\n" + "="*60)
-    print("Child Law Legal Assistant - Conversation Mode")
-    print("="*60)
-    print("Type 'exit' to quit | 'clear' to reset conversation history")
-    print("="*60 + "\n")
+    print(f"✓ Ready: Corpus contains {len(chunks)} structured statutory chunks.\n")
 
-    # Conversation history for context window
     conversation_history = []
     current_method = None
 
+    methods_map = {
+        "1": ("BM25 (Lexical Match)", retrieve_bm25),
+        "2": ("Dense (Gemini Embeddings)", retrieve_dense),
+        "3": ("Hybrid (Reciprocal Rank Fusion - RRF)", retrieve_hybrid_rrf),
+        "4": ("Hybrid + Cross-Encoder Reranking", retrieve_reranked),
+        "5": ("Corrective RAG (HyDE)", retrieve_crag_hyde),
+    }
+
     while True:
         if not current_method:
-            print("\nChoose retrieval method:")
-            print("1. Dense")
-            print("2. Hybrid")
-            print("3. Multi Query")
-            print("4. Corrective")
-            print("5. Run Evaluation")
-            print("6. Exit")
+            print("\nSelect Retrieval Strategy:")
+            print("  1. Lexical Search (BM25 Okapi)")
+            print("  2. Dense Vector Retrieval (Gemini Embeddings)")
+            print("  3. Hybrid Retrieval (Reciprocal Rank Fusion - RRF)")
+            print("  4. Two-Stage Reranked Hybrid (Cross-Scoring)")
+            print("  5. Corrective RAG with HyDE (Hypothetical Document Embeddings)")
+            print("  6. Run Scientific Benchmark & Generate Paper Tables")
+            print("  7. Exit")
 
-            choice = input("\nEnter choice: ").strip()
-
-            if choice == "5":
-                run_evaluation(chunks)
-                continue
+            choice = input("\nEnter choice (1-7): ").strip()
 
             if choice == "6":
-                print("Goodbye!")
+                run_comprehensive_benchmark(chunks)
+                continue
+
+            if choice == "7":
+                print("Exiting assistant. Goodbye!")
                 break
 
-            if choice not in ["1", "2", "3", "4"]:
-                print("Invalid choice. Please try again.")
+            if choice not in methods_map:
+                print("Invalid choice. Please select 1 through 7.")
                 continue
 
             current_method = choice
+            method_label, _ = methods_map[current_method]
+            print(f"\n[Active Strategy: {method_label}]")
 
-        question = input("\nYour question (or 'back'/'clear'/'exit'): ").strip()
+        question = input("\nEnter your legal question (or 'back', 'clear', 'exit'): ").strip()
+
+        if not question:
+            continue
 
         if question.lower() == "back":
             current_method = None
@@ -103,54 +98,46 @@ def main():
 
         if question.lower() == "clear":
             conversation_history = []
-            print("\nConversation history cleared!")
+            print("Conversation memory cleared.")
             continue
 
         if question.lower() == "exit":
-            print("Goodbye!")
+            print("Exiting assistant. Goodbye!")
             break
 
-        if not is_child_law_question(question):
-            print("\nThis assistant is specialized only for child protection and child rights related legal questions.")
+        # Dual-Stage Domain Guardrail Check
+        is_valid, category, redirection = validate_child_law_domain(question)
+        if not is_valid:
+            print("\n" + redirection + "\n")
             continue
 
-        filtered_chunks = filter_chunks_for_state(question, chunks)
+        # Retrieve relevant statutory context
+        method_label, method_fn = methods_map[current_method]
+        print(f"\nRetrieving via {method_label}...")
+        retrieved = method_fn(question, chunks)
 
-        if current_method == "1":
-            retrieved = retrieve_dense(question, filtered_chunks)
-        elif current_method == "2":
-            retrieved = retrieve_hybrid(question, filtered_chunks)
-        elif current_method == "3":
-            retrieved = retrieve_multiquery(question, filtered_chunks)
-        elif current_method == "4":
-            retrieved = retrieve_corrective(question, filtered_chunks)
+        print("\n" + "-" * 70)
+        print("Retrieved Statutory Provisions:")
+        for idx, chunk in enumerate(retrieved):
+            key = (chunk["file"], chunk["chunk_id"])
+            score = LAST_RETRIEVAL_SCORES.get(key, 0.0)
+            act_title = chunk.get("act_title", chunk["file"])
+            section_hint = chunk.get("section_hint", "General")
+            print(f"  [{idx+1}] {act_title} | {section_hint} (Score: {score:.3f})")
+        print("-" * 70)
 
-        print("\n" + "-"*60)
-        print("Retrieved Sources (with Retrieval Scores):")
-        for chunk in retrieved:
-            chunk_key = (chunk['file'], chunk['chunk_id'])
-            score = LAST_RETRIEVAL_SCORES.get(chunk_key, 0.0)
-            # Format score as percentage or decimal
-            if score > 1.0:
-                score_display = f"{score:.3f}"
-            else:
-                score_display = f"{score:.1%}"
-            print(f"  • {chunk['file']} (chunk {chunk['chunk_id']}) [Score: {score_display}]")
-        print("-"*60)
-
-        print("\nAnswer:\n")
+        # Generate Grounded Answer
+        print("\nGenerating grounded legal response...\n")
         answer = generate_answer(question, retrieved, conversation_history)
         print(answer)
+        print("\n" + "=" * 70)
 
-        # Add to conversation history for context window
+        # Context Memory (last 3 turns)
         conversation_history.append({"role": "user", "content": question})
         conversation_history.append({"role": "assistant", "content": answer})
-
-        # Keep only last 6 messages (3 q&a pairs) for context window
-        if len(conversation_history) > 12:
-            conversation_history = conversation_history[-12:]
+        if len(conversation_history) > 6:
+            conversation_history = conversation_history[-6:]
 
 
 if __name__ == "__main__":
     main()
-

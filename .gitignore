@@ -35,3 +35,13 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Environment & secrets
+.env
+*.env
+
+# Cache & outputs
+outputs/*.pkl
+outputs/*.json
+outputs/*.png
+outputs/*.html
