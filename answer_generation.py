@@ -13,7 +13,7 @@ def validate_child_law_domain(question: str) -> Tuple[bool, str, Optional[str]]:
     Dual-Stage Guardrail to ensure query focus remains strictly on child protection and child rights.
     
     Stage 1: Fast lexical match for high-confidence child protection markers.
-    Stage 2: Few-shot semantic intent classifier via Gemini.
+    Stage 2: Few-shot semantic intent classifier via LLM.
     
     Returns:
         Tuple of (is_valid: bool, classification: str, explanation_or_redirection: Optional[str])

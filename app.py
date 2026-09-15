@@ -41,7 +41,7 @@ def main():
         print("First-time setup: Ingesting central legal statutes...")
         documents = load_documents()
         chunks = chunk_documents(documents)
-        print("Generating embeddings via Google Gemini...")
+        print("Generating embeddings via local Ollama model...")
         chunks = embed_chunks(chunks)
         save_embeddings_cache(chunks)
 
@@ -52,7 +52,7 @@ def main():
 
     methods_map = {
         "1": ("BM25 (Lexical Match)", retrieve_bm25),
-        "2": ("Dense (Gemini Embeddings)", retrieve_dense),
+        "2": ("Dense (Ollama Embeddings)", retrieve_dense),
         "3": ("Hybrid (Reciprocal Rank Fusion - RRF)", retrieve_hybrid_rrf),
         "4": ("Hybrid + Cross-Encoder Reranking", retrieve_reranked),
         "5": ("Corrective RAG (HyDE)", retrieve_crag_hyde),
@@ -62,7 +62,7 @@ def main():
         if not current_method:
             print("\nSelect Retrieval Strategy:")
             print("  1. Lexical Search (BM25 Okapi)")
-            print("  2. Dense Vector Retrieval (Gemini Embeddings)")
+            print("  2. Dense Vector Retrieval (Ollama Embeddings)")
             print("  3. Hybrid Retrieval (Reciprocal Rank Fusion - RRF)")
             print("  4. Two-Stage Reranked Hybrid (Cross-Scoring)")
             print("  5. Corrective RAG with HyDE (Hypothetical Document Embeddings)")

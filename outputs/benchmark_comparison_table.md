@@ -1,0 +1,9 @@
+# Empirical Retrieval & Generation Benchmark Results
+
+| Retrieval Strategy | Hit@1 (%) | Hit@3 (%) | Hit@5 (%) | MRR@5 | Context Support | Gold Similarity | Citation Acc. (%) | Avg Retrieval Latency (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **BM25 (Lexical)** | 30.0% | 63.3% | 70.0% | 0.452 | 0.746 | 0.617 | 100.0% | 0.04 |
+| **Dense (Ollama)** | 53.3% | 60.0% | 70.0% | 0.583 | 0.683 | 0.578 | 100.0% | 2.35 |
+| **Hybrid (RRF)** | 46.7% | 70.0% | 73.3% | 0.584 | 0.812 | 0.618 | 100.0% | 2.32 |
+| **Hybrid + Local Rerank** | 53.3% | 70.0% | 73.3% | 0.618 | 0.708 | 0.625 | 50.0% | 4.62 |
+| **Hybrid Corrective** | 46.7% | 70.0% | 73.3% | 0.584 | 0.812 | 0.618 | 100.0% | 2.47 |

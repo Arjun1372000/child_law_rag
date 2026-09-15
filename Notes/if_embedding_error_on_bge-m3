@@ -1,0 +1,2 @@
+$env:OLLAMA_FLASH_ATTENTION="0"
+ollama serve

@@ -1,19 +1,14 @@
-# config.py
-"""
-Configuration, model initialization, and global settings for Child Law Legal Assistant.
-Powered by Google Gemini API (gemini-3.6-flash and gemini-embedding-001).
-"""
+"""Central configuration and Ollama client for Child Law RAG."""
 
 import os
 import sys
 import time
 from pathlib import Path
-from dotenv import load_dotenv
-from google import genai
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from google.genai.errors import APIError
+from typing import List
 
-# Windows console encoding safeguard
+import requests
+from dotenv import load_dotenv
+
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -21,100 +16,125 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# Project base paths
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "law_data"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_DIR.mkdir(exist_ok=True)
 
-# Load environment variables from .env
 load_dotenv(BASE_DIR / ".env")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError(
-        "GEMINI_API_KEY is not set. Please add it to your .env file or environment variables."
-    )
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "180"))
+OLLAMA_RETRIES = int(os.getenv("OLLAMA_RETRIES", "3"))
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+LLM_NUM_PREDICT = int(os.getenv("LLM_NUM_PREDICT", "700"))
 
-# Models
-LLM_MODEL = os.getenv("GEMINI_LLM_MODEL", "gemini-3.6-flash")
-EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3")
 
-# Initialize official Google GenAI Client
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Cache is model-specific so changing embeddings can never silently reuse an old index.
+MODEL_CACHE_NAME = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in EMBEDDING_MODEL)
+CACHE_FILE = f"{MODEL_CACHE_NAME}_embeddings_cache.pkl"
+CHECKPOINT_FILE = OUTPUTS_DIR / f"{MODEL_CACHE_NAME}_embeddings_checkpoint.pkl"
 
-# Free Tier Rate Pacing & Robustness
-REQUEST_DELAY_SECONDS = 25.0 # Spacing between batches to stay under 100 RPM
-BATCH_EMBED_SIZE = 35        # Safe batch size (35 items / 25s = 84 items/min)
+REQUEST_DELAY_SECONDS = float(os.getenv("REQUEST_DELAY_SECONDS", "0.05"))
+BATCH_EMBED_SIZE = int(os.getenv("BATCH_EMBED_SIZE", "16"))
 
-# Global tracking
-LAST_RETRIEVAL_SCORES = {}   # {(file, chunk_id): score}
-CITATION_MAP = {}            # {CITE_ID: citation_string}
+LAST_RETRIEVAL_SCORES = {}
+CITATION_MAP = {}
 
-# Document chunking defaults (Statutory structure-aware)
-DEFAULT_CHUNK_SIZE = 1800
-DEFAULT_CHUNK_OVERLAP = 200
-
-# Retrieval hyperparameters
-DEFAULT_TOP_K = 4
-RRF_K = 60                   # Standard Reciprocal Rank Fusion constant
+DEFAULT_CHUNK_SIZE = 1600
+DEFAULT_CHUNK_OVERLAP = 180
+DEFAULT_TOP_K = 5
+RRF_K = 60
 BM25_K1 = 1.5
 BM25_B = 0.75
 
-# Cache file
-CACHE_FILE = "gemini_embeddings_cache.pkl"
-
-# Domain validation keywords for Stage 1 fast filter
 CHILD_LAW_KEYWORDS = [
-    "child", "children", "minor", "pocso", "juvenile",
-    "cwc", "jjb", "adoption", "guardian", "foster",
-    "child labour", "child abuse", "child sexual abuse",
-    "penetrative", "carnal", "trafficking", "right to education",
+    "child", "children", "minor", "pocso", "juvenile", "cwc", "jjb",
+    "adoption", "guardian", "foster", "child labour", "child abuse",
+    "child sexual abuse", "penetrative", "trafficking", "right to education",
     "rte", "delinquent", "conflict with law", "care and protection",
     "special court", "child marriage", "tender age", "safeguard",
     "corporal punishment", "abandoned", "surrendered child"
 ]
 
-# Central Statutes Manifest (Primary Bare Acts & Model Rules)
 CENTRAL_ACTS_MANIFEST = {
-    "POCSOact_pt1.pdf": "Protection of Children from Sexual Offences (POCSO) Act, 2012",
-    "POCSOrules.pdf": "POCSO Rules, 2020",
+    # Put the official bare Act PDF here. The existing POCSOact_pt1.pdf in the
+    # repository is a guidance/handbook and should not be treated as the Act.
+    "pocso_act_2012_official.pdf": "Protection of Children from Sexual Offences (POCSO) Act, 2012",
+    "POCSOrules.pdf": "Protection of Children from Sexual Offences Rules, 2020",
     "jjact2015.pdf": "Juvenile Justice (Care and Protection of Children) Act, 2015",
     "juvenile_justice_rules_2017.pdf": "Juvenile Justice Model Rules, 2017",
-    "constitution_english.pdf": "Constitution of India (Child Rights Provisions)"
+    "constitution_english.pdf": "Constitution of India (Child Rights Provisions)",
 }
 
 
-def call_llm(contents: str, system_instruction: str = None) -> str:
-    """Wrapper for LLM calls with automatic retry on rate limits"""
-    attempts = 0
-    while attempts < 5:
+def _post_ollama(endpoint: str, payload: dict) -> dict:
+    """POST to Ollama with bounded retries and useful server errors."""
+    last_error = None
+    for attempt in range(1, OLLAMA_RETRIES + 1):
         try:
-            config = {}
-            if system_instruction:
-                config["system_instruction"] = system_instruction
-            
-            response = client.models.generate_content(
-                model=LLM_MODEL,
-                contents=contents,
-                config=config if config else None
+            response = requests.post(
+                f"{OLLAMA_HOST}{endpoint}",
+                json=payload,
+                timeout=OLLAMA_TIMEOUT,
             )
-            return response.text.strip() if response.text else ""
-        except Exception as e:
-            attempts += 1
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                time.sleep(25)
-            else:
-                time.sleep(2)
-            if attempts >= 5:
-                raise e
-    return ""
+            if response.status_code >= 500:
+                detail = response.text[:500].strip()
+                raise RuntimeError(f"Ollama HTTP {response.status_code}: {detail}")
+            response.raise_for_status()
+            return response.json()
+        except (requests.Timeout, requests.ConnectionError, RuntimeError, requests.RequestException) as exc:
+            last_error = exc
+            if attempt < OLLAMA_RETRIES:
+                delay = min(8.0, 1.5 ** attempt)
+                print(f"  [Ollama] attempt {attempt}/{OLLAMA_RETRIES} failed: {exc}; retrying in {delay:.1f}s...")
+                time.sleep(delay)
+    raise RuntimeError(f"Ollama request failed after {OLLAMA_RETRIES} attempts: {last_error}")
 
 
-def call_embed(texts: list[str]) -> list[list[float]]:
-    """Batch embed text passages using Gemini embeddings"""
-    response = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=texts
+def call_llm(contents: str, system_instruction: str = None) -> str:
+    """Generate one local response from Ollama."""
+    if system_instruction:
+        prompt = f"{system_instruction}\n\n{contents}"
+    else:
+        prompt = contents
+
+    payload = {
+        "model": LLM_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
+        "options": {
+            "temperature": 0.0,
+            "num_ctx": OLLAMA_NUM_CTX,
+            "num_predict": LLM_NUM_PREDICT,
+        },
+    }
+    data = _post_ollama("/api/generate", payload)
+    text = data.get("response", "").strip()
+    if not text:
+        raise RuntimeError("Ollama returned an empty LLM response")
+    return text
+
+
+def call_embed(texts: List[str]) -> List[List[float]]:
+    """Embed one or more texts with the configured local Ollama encoder."""
+    if not texts:
+        return []
+    data = _post_ollama(
+        "/api/embed",
+        {
+            "model": EMBEDDING_MODEL,
+            "input": texts,
+            "keep_alive": OLLAMA_KEEP_ALIVE,
+        },
     )
-    return [e.values for e in response.embeddings]
+    embeddings = data.get("embeddings")
+    if not embeddings or len(embeddings) != len(texts):
+        raise RuntimeError(
+            f"Ollama embedding response count mismatch: expected {len(texts)}, got {len(embeddings or [])}"
+        )
+    return embeddings

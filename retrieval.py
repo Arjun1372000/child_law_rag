@@ -1,27 +1,19 @@
-# retrieval.py
-"""
-Comparative Information Retrieval Suite for Indian Child Law RAG:
-1. Lexical Baseline: BM25 (Okapi)
-2. Dense Baseline: Semantic Vector Cosine Similarity
-3. Hybrid with Reciprocal Rank Fusion (RRF)
-4. Two-Stage Reranked Hybrid (Cross-Scoring)
-5. Corrective RAG with Hypothetical Document Embeddings (HyDE)
-"""
+"""Retrieval strategies for Indian Child Law RAG."""
 
 import re
-import math
-from typing import List, Dict, Tuple
 from collections import defaultdict
+from typing import Dict, List, Tuple
+
 import numpy as np
 
 from config import (
-    call_llm,
     LAST_RETRIEVAL_SCORES,
     DEFAULT_TOP_K,
     RRF_K,
     BM25_K1,
-    BM25_B
+    BM25_B,
 )
+
 from embeddings import embed_single_text
 
 try:
@@ -30,220 +22,551 @@ except ImportError:
     BM25Okapi = None
 
 
+# ---------------------------------------------------------------------------
+# Text processing
+# ---------------------------------------------------------------------------
+
 def tokenize_legal_text(text: str) -> List[str]:
-    """Tokenize legal text with statutory term preservation (e.g., 'section', numbers, keywords)."""
-    clean = re.sub(r"[^\w\s]", " ", text.lower())
-    return [t for t in clean.split() if len(t) > 1]
+    text = re.sub(r"[^\w\s()/-]", " ", text.lower())
+    return [t for t in text.split() if len(t) > 1]
 
 
-# -------------------------------------------------------------------------
-# Method 1: Lexical BM25 Retrieval
-# -------------------------------------------------------------------------
-def retrieve_bm25(question: str, chunks: List[Dict], top_k: int = DEFAULT_TOP_K) -> List[Dict]:
-    """
-    Lexical BM25 retrieval for exact statutory terminology and section numbers.
-    """
+def _chunk_key(chunk: Dict) -> Tuple[str, int]:
+    return chunk["file"], chunk["chunk_id"]
+
+
+# ---------------------------------------------------------------------------
+# BM25
+# ---------------------------------------------------------------------------
+
+def retrieve_bm25(
+    question: str,
+    chunks: List[Dict],
+    top_k: int = DEFAULT_TOP_K,
+) -> List[Dict]:
+
     LAST_RETRIEVAL_SCORES.clear()
-    
-    tokenized_corpus = [tokenize_legal_text(c["text"]) for c in chunks]
+
+    if not question or not chunks:
+        return chunks[:top_k]
+
+    if BM25Okapi is None:
+        raise ImportError("rank-bm25 is required for BM25 retrieval")
+
+    tokenized_chunks = [
+        tokenize_legal_text(c.get("text", ""))
+        for c in chunks
+    ]
+
     query_tokens = tokenize_legal_text(question)
-    
+
     if not query_tokens:
         return chunks[:top_k]
 
-    bm25 = BM25Okapi(tokenized_corpus, k1=BM25_K1, b=BM25_B)
+    bm25 = BM25Okapi(
+        tokenized_chunks,
+        k1=BM25_K1,
+        b=BM25_B,
+    )
+
     scores = bm25.get_scores(query_tokens)
 
-    # Normalize scores to 0.0 - 1.0
-    max_score = max(scores) if len(scores) > 0 and max(scores) > 0 else 1.0
-    scored = []
+    max_score = float(np.max(scores)) if len(scores) else 0.0
+    denom = max_score if max_score > 0 else 1.0
+
+    ranked = []
+
     for idx, chunk in enumerate(chunks):
-        norm_score = float(scores[idx] / max_score)
-        chunk_key = (chunk["file"], chunk["chunk_id"])
-        LAST_RETRIEVAL_SCORES[chunk_key] = norm_score
-        scored.append((norm_score, chunk))
+        normalized_score = max(
+            0.0,
+            float(scores[idx]) / denom,
+        )
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [chunk for _, chunk in scored[:top_k]]
+        LAST_RETRIEVAL_SCORES[_chunk_key(chunk)] = normalized_score
+        ranked.append((normalized_score, chunk))
+
+    ranked.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    return [chunk for _, chunk in ranked[:top_k]]
 
 
-# -------------------------------------------------------------------------
-# Method 2: Dense Semantic Vector Retrieval
-# -------------------------------------------------------------------------
-def retrieve_dense(question: str, chunks: List[Dict], top_k: int = DEFAULT_TOP_K) -> List[Dict]:
-    """
-    Dense semantic retrieval using Gemini embeddings and cosine similarity.
-    """
+# ---------------------------------------------------------------------------
+# Dense retrieval
+# ---------------------------------------------------------------------------
+
+def retrieve_dense(
+    question: str,
+    chunks: List[Dict],
+    top_k: int = DEFAULT_TOP_K,
+) -> List[Dict]:
+
     LAST_RETRIEVAL_SCORES.clear()
-    
-    q_embedding = embed_single_text(question)
-    # Normalize query vector for cosine similarity
-    q_norm = np.linalg.norm(q_embedding)
-    if q_norm > 0:
-        q_vec = q_embedding / q_norm
-    else:
-        q_vec = q_embedding
 
-    scored = []
+    if not question or not chunks:
+        return chunks[:top_k]
+
+    query_vector = embed_single_text(question)
+    query_norm = np.linalg.norm(query_vector)
+
+    if query_norm == 0:
+        return chunks[:top_k]
+
+    query_vector = query_vector / query_norm
+
+    ranked = []
+
     for chunk in chunks:
-        doc_vec = chunk["embedding"]
-        doc_norm = np.linalg.norm(doc_vec)
-        if doc_norm > 0:
-            doc_norm_vec = doc_vec / doc_norm
-            similarity = float(np.dot(q_vec, doc_norm_vec))
+        vector = np.asarray(
+            chunk["embedding"],
+            dtype=np.float32,
+        )
+
+        vector_norm = np.linalg.norm(vector)
+
+        if vector_norm == 0:
+            score = 0.0
         else:
-            similarity = 0.0
+            cosine = float(
+                np.dot(
+                    query_vector,
+                    vector / vector_norm,
+                )
+            )
+            score = (cosine + 1.0) / 2.0
 
-        # Rescale cosine (-1 to 1) to (0 to 1)
-        rescaled_score = max(0.0, min(1.0, (similarity + 1.0) / 2.0))
-        
-        chunk_key = (chunk["file"], chunk["chunk_id"])
-        LAST_RETRIEVAL_SCORES[chunk_key] = rescaled_score
-        scored.append((rescaled_score, chunk))
+        LAST_RETRIEVAL_SCORES[_chunk_key(chunk)] = score
+        ranked.append((score, chunk))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [chunk for _, chunk in scored[:top_k]]
+    ranked.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    return [chunk for _, chunk in ranked[:top_k]]
 
 
-# -------------------------------------------------------------------------
-# Method 3: Hybrid Retrieval with Reciprocal Rank Fusion (RRF)
-# -------------------------------------------------------------------------
-def retrieve_hybrid_rrf(question: str, chunks: List[Dict], top_k: int = DEFAULT_TOP_K) -> List[Dict]:
-    """
-    Hybrid retrieval fusing BM25 lexical rank and Dense vector rank via Reciprocal Rank Fusion (RRF).
-    Standard formulation: RRF(d) = sum(1 / (k + rank_i(d))) where k = 60.
-    """
-    LAST_RETRIEVAL_SCORES.clear()
-    
-    pool_size = min(len(chunks), max(top_k * 4, 25))
-    
-    # Run first-stage dense and lexical ranking
-    dense_candidates = retrieve_dense(question, chunks, top_k=pool_size)
-    dense_scores = dict(LAST_RETRIEVAL_SCORES)
-    
-    bm25_candidates = retrieve_bm25(question, chunks, top_k=pool_size)
-    bm25_scores = dict(LAST_RETRIEVAL_SCORES)
+# ---------------------------------------------------------------------------
+# RRF helpers
+# ---------------------------------------------------------------------------
+
+def _rrf_fuse(
+    ranked_lists: List[List[Dict]],
+    top_k: int,
+) -> List[Dict]:
 
     rrf_scores = defaultdict(float)
+    by_key = {}
 
-    # Accumulate RRF for dense ranks
-    for rank, chunk in enumerate(dense_candidates):
-        key = (chunk["file"], chunk["chunk_id"])
-        rrf_scores[key] += 1.0 / (RRF_K + (rank + 1))
+    for ranked_list in ranked_lists:
+        for rank, chunk in enumerate(ranked_list, start=1):
+            key = _chunk_key(chunk)
 
-    # Accumulate RRF for BM25 ranks
-    for rank, chunk in enumerate(bm25_candidates):
-        key = (chunk["file"], chunk["chunk_id"])
-        rrf_scores[key] += 1.0 / (RRF_K + (rank + 1))
+            by_key[key] = chunk
+            rrf_scores[key] += 1.0 / (RRF_K + rank)
 
-    # Index chunks by key
-    chunk_map = {(c["file"], c["chunk_id"]): c for c in chunks}
-    
-    scored = []
-    for key, score in rrf_scores.items():
-        chunk = chunk_map.get(key)
-        if chunk:
-            scored.append((score, chunk))
+    ranked = sorted(
+        (
+            (score, by_key[key])
+            for key, score in rrf_scores.items()
+        ),
+        key=lambda item: item[0],
+        reverse=True,
+    )
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    
-    # Store top scores for UI/inspection
-    for score, chunk in scored[:top_k]:
-        key = (chunk["file"], chunk["chunk_id"])
-        LAST_RETRIEVAL_SCORES[key] = score
-
-    return [chunk for _, chunk in scored[:top_k]]
+    return [chunk for _, chunk in ranked[:top_k]]
 
 
-# -------------------------------------------------------------------------
-# Method 4: Two-Stage Hybrid + Cross-Encoder Reranking
-# -------------------------------------------------------------------------
-def retrieve_reranked(question: str, chunks: List[Dict], top_k: int = DEFAULT_TOP_K) -> List[Dict]:
-    """
-    Two-Stage Retrieval:
-    Stage 1: Retrieve candidate pool using Hybrid RRF.
-    Stage 2: Pointwise LLM cross-encoder scoring to evaluate exact statutory relevance.
-    """
+# ---------------------------------------------------------------------------
+# Hybrid RRF
+# ---------------------------------------------------------------------------
+
+def retrieve_hybrid_rrf(
+    question: str,
+    chunks: List[Dict],
+    top_k: int = DEFAULT_TOP_K,
+) -> List[Dict]:
+
     LAST_RETRIEVAL_SCORES.clear()
-    candidate_k = min(len(chunks), top_k * 3)
-    candidates = retrieve_hybrid_rrf(question, chunks, top_k=candidate_k)
 
-    if len(candidates) <= top_k:
-        return candidates
+    if not chunks:
+        return []
 
-    scored = []
-    for chunk in candidates:
-        text_preview = chunk["text"][:600]
-        act = chunk.get("act_title", chunk["file"])
-        hint = chunk.get("section_hint", "General")
-        
-        # Cross-encoder prompt
-        scoring_prompt = f"""Rate how directly relevant this legal statutory passage is to answering the user question on Indian child law.
-Score from 0 (completely irrelevant) to 10 (directly answers the question).
-Respond with ONLY an integer from 0 to 10.
+    candidate_k = min(
+        len(chunks),
+        max(25, top_k * 4),
+    )
 
-Question: {question}
-Statute: {act} ({hint})
-Passage:
-{text_preview}"""
+    dense_results = retrieve_dense(
+        question,
+        chunks,
+        candidate_k,
+    )
 
-        try:
-            res = call_llm(scoring_prompt).strip()
-            digits = re.findall(r"\b(10|[0-9])\b", res)
-            score = float(digits[0]) if digits else 5.0
-        except Exception:
-            score = 5.0
+    bm25_results = retrieve_bm25(
+        question,
+        chunks,
+        candidate_k,
+    )
 
-        key = (chunk["file"], chunk["chunk_id"])
-        norm_score = score / 10.0
-        LAST_RETRIEVAL_SCORES[key] = norm_score
-        scored.append((norm_score, chunk))
+    results = _rrf_fuse(
+        [dense_results, bm25_results],
+        top_k,
+    )
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [chunk for _, chunk in scored[:top_k]]
+    # Reconstruct RRF scores for the returned documents.
+    score_map = defaultdict(float)
+
+    for ranked_list in [dense_results, bm25_results]:
+        for rank, chunk in enumerate(ranked_list, start=1):
+            score_map[_chunk_key(chunk)] += 1.0 / (
+                RRF_K + rank
+            )
+
+    for chunk in results:
+        LAST_RETRIEVAL_SCORES[_chunk_key(chunk)] = score_map[
+            _chunk_key(chunk)
+        ]
+
+    return results
 
 
-# -------------------------------------------------------------------------
-# Method 5: Corrective RAG with Hypothetical Document Embeddings (HyDE)
-# -------------------------------------------------------------------------
-def generate_hypothetical_statute(question: str) -> str:
-    """Draft a hypothetical Indian statutory clause to bridge vocabulary mismatch."""
-    prompt = f"""Generate a concise hypothetical Indian statutory excerpt (in formal legal drafting style with section language) that would answer this legal query:
-Query: {question}
+# ---------------------------------------------------------------------------
+# Local reranking
+# ---------------------------------------------------------------------------
 
-Respond with only 2-3 sentences of hypothetical statutory text:"""
-    try:
-        return call_llm(prompt).strip()
-    except Exception:
+def _exact_legal_bonus(
+    question: str,
+    chunk: Dict,
+) -> float:
+
+    q = question.lower()
+    text = chunk.get("text", "").lower()
+
+    bonus = 0.0
+
+    # Explicit provision references are extremely important
+    # in statutory retrieval.
+    provisions = re.findall(
+        r"\b(?:section|article|rule)\s+\d+[a-z]?(?:\(\d+\))?",
+        q,
+    )
+
+    for provision in provisions:
+        normalized = provision.replace(" ", "")
+        normalized_text = text.replace(" ", "")
+
+        if normalized in normalized_text:
+            bonus += 0.20
+
+    # Exact act-title clues.
+    act_title = chunk.get("act_title", "").lower()
+
+    for term in [
+        "pocso",
+        "juvenile justice",
+        "constitution",
+        "child",
+    ]:
+        if term in q and term in act_title:
+            bonus += 0.05
+
+    return min(bonus, 0.30)
+
+
+def retrieve_reranked(
+    question: str,
+    chunks: List[Dict],
+    top_k: int = DEFAULT_TOP_K,
+) -> List[Dict]:
+
+    LAST_RETRIEVAL_SCORES.clear()
+
+    candidate_k = min(
+        len(chunks),
+        max(30, top_k * 6),
+    )
+
+    candidates = retrieve_hybrid_rrf(
+        question,
+        chunks,
+        candidate_k,
+    )
+
+    if not candidates:
+        return []
+
+    query_tokens = set(
+        tokenize_legal_text(question)
+    )
+
+    query_vector = embed_single_text(question)
+    query_norm = np.linalg.norm(query_vector)
+
+    if query_norm:
+        query_vector = query_vector / query_norm
+
+    reranked = []
+
+    for original_rank, chunk in enumerate(candidates, start=1):
+
+        text_tokens = set(
+            tokenize_legal_text(
+                chunk.get("text", "")
+            )
+        )
+
+        lexical_overlap = (
+            len(query_tokens & text_tokens)
+            / max(1, len(query_tokens))
+        )
+
+        vector = np.asarray(
+            chunk["embedding"],
+            dtype=np.float32,
+        )
+
+        vector_norm = np.linalg.norm(vector)
+
+        if vector_norm and query_norm:
+            cosine = float(
+                np.dot(
+                    query_vector,
+                    vector / vector_norm,
+                )
+            )
+            dense_score = (cosine + 1.0) / 2.0
+        else:
+            dense_score = 0.0
+
+        # Mild preference for the original hybrid rank.
+        rank_score = 1.0 / np.sqrt(original_rank)
+
+        exact_bonus = _exact_legal_bonus(
+            question,
+            chunk,
+        )
+
+        score = (
+            0.50 * dense_score
+            + 0.20 * lexical_overlap
+            + 0.20 * rank_score
+            + exact_bonus
+        )
+
+        LAST_RETRIEVAL_SCORES[_chunk_key(chunk)] = score
+        reranked.append((score, chunk))
+
+    reranked.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    return [
+        chunk
+        for _, chunk in reranked[:top_k]
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Corrective retrieval
+# ---------------------------------------------------------------------------
+
+LEGAL_QUERY_EXPANSIONS = {
+    "punishment": ["penalty", "sentence", "imprisonment"],
+    "sentence": ["punishment", "penalty", "imprisonment"],
+    "report": ["reporting", "mandatory reporting", "police"],
+    "police": ["police officer", "special juvenile police unit"],
+    "bail": ["release", "bail order"],
+    "foster care": ["foster", "placement", "care"],
+    "abandoned": ["orphaned", "surrendered", "child in need of care and protection"],
+    "education": ["free education", "compulsory education", "school"],
+    "child labour": ["employment of children", "hazardous employment"],
+    "corporal punishment": ["physical punishment", "child care institution"],
+    "sexual harassment": ["sexual intent", "harassment of child"],
+    "pornographic": ["pornography", "pornographic material"],
+}
+
+
+def _expand_legal_query(question: str) -> str:
+
+    lower = question.lower()
+    additions = []
+
+    for trigger, expansions in LEGAL_QUERY_EXPANSIONS.items():
+        if trigger in lower:
+            additions.extend(expansions)
+
+    if not additions:
         return question
 
+    unique_additions = list(dict.fromkeys(additions))
 
-def retrieve_crag_hyde(question: str, chunks: List[Dict], top_k: int = DEFAULT_TOP_K) -> List[Dict]:
+    return (
+        question
+        + " "
+        + " ".join(unique_additions)
+    )
+
+
+def _retrieval_confidence(
+    retrieved: List[Dict],
+    question: str,
+) -> float:
+
+    if not retrieved:
+        return 0.0
+
+    scores = []
+
+    for chunk in retrieved[:3]:
+
+        text = chunk.get("text", "").lower()
+        query_terms = tokenize_legal_text(question)
+
+        if not query_terms:
+            continue
+
+        text_terms = set(
+            tokenize_legal_text(text)
+        )
+
+        overlap = len(
+            set(query_terms) & text_terms
+        ) / max(1, len(set(query_terms)))
+
+        scores.append(overlap)
+
+    if not scores:
+        return 0.0
+
+    return float(np.mean(scores))
+
+
+def retrieve_crag_hyde(
+    question: str,
+    chunks: List[Dict],
+    top_k: int = DEFAULT_TOP_K,
+) -> List[Dict]:
     """
-    Corrective RAG using HyDE:
-    1. Generates a hypothetical statutory clause.
-    2. Embeds both question and hypothetical legal passage.
-    3. Retrieves from hybrid fusion.
-    4. Applies confidence grading to ensure retrieved context relevance.
+    Corrective retrieval without an additional LLM call.
+
+    Stage 1:
+        Hybrid BM25 + dense retrieval.
+
+    Stage 2:
+        Estimate retrieval confidence.
+
+    Stage 3:
+        If confidence is weak, reformulate the query using
+        domain-specific legal terminology and perform a second
+        hybrid retrieval.
+
+    Stage 4:
+        Fuse the original and corrective retrieval results.
+
+    This keeps the method fully local and reproducible while
+    making it genuinely different from ordinary Hybrid RRF.
     """
+
     LAST_RETRIEVAL_SCORES.clear()
-    
-    hypothetical_doc = generate_hypothetical_statute(question)
-    combined_query = f"{question}\n{hypothetical_doc}"
 
-    # Retrieve using RRF on the enhanced query
-    retrieved = retrieve_hybrid_rrf(combined_query, chunks, top_k=top_k)
+    initial = retrieve_hybrid_rrf(
+        question,
+        chunks,
+        top_k=top_k,
+    )
 
-    # Quality check: If no high scoring chunks, fall back to exact lexical query
-    max_score = max(LAST_RETRIEVAL_SCORES.values()) if LAST_RETRIEVAL_SCORES else 0.0
-    if max_score < 0.015:  # Low RRF threshold indicating sparse match
-        lexical_fallback = retrieve_bm25(question, chunks, top_k=top_k)
-        return lexical_fallback
+    if not initial:
+        return []
 
-    return retrieved
+    confidence = _retrieval_confidence(
+        initial,
+        question,
+    )
+
+    # High-confidence retrieval needs no correction.
+    if confidence >= 0.35:
+        return initial
+
+    corrected_query = _expand_legal_query(
+        question
+    )
+
+    # Expansion did not change the query.
+    if corrected_query == question:
+        return initial
+
+    candidate_k = min(
+        len(chunks),
+        max(25, top_k * 4),
+    )
+
+    original_dense = retrieve_dense(
+        question,
+        chunks,
+        candidate_k,
+    )
+
+    original_bm25 = retrieve_bm25(
+        question,
+        chunks,
+        candidate_k,
+    )
+
+    corrected_dense = retrieve_dense(
+        corrected_query,
+        chunks,
+        candidate_k,
+    )
+
+    corrected_bm25 = retrieve_bm25(
+        corrected_query,
+        chunks,
+        candidate_k,
+    )
+
+    fused = _rrf_fuse(
+        [
+            original_dense,
+            original_bm25,
+            corrected_dense,
+            corrected_bm25,
+        ],
+        top_k,
+    )
+
+    # Record fused scores.
+    score_map = defaultdict(float)
+
+    for ranked_list in [
+        original_dense,
+        original_bm25,
+        corrected_dense,
+        corrected_bm25,
+    ]:
+        for rank, chunk in enumerate(
+            ranked_list,
+            start=1,
+        ):
+            score_map[_chunk_key(chunk)] += 1.0 / (
+                RRF_K + rank
+            )
+
+    for chunk in fused:
+        LAST_RETRIEVAL_SCORES[_chunk_key(chunk)] = score_map[
+            _chunk_key(chunk)
+        ]
+
+    return fused
 
 
-# Backward compatibility aliases
+# ---------------------------------------------------------------------------
+# Compatibility aliases
+# ---------------------------------------------------------------------------
+
 retrieve_hybrid = retrieve_hybrid_rrf
 retrieve_corrective = retrieve_crag_hyde
 retrieve_multiquery = retrieve_crag_hyde
